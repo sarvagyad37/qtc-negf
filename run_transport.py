@@ -16,7 +16,7 @@ class TransportCalculation:
     """
     Orchestrates DFT and quantum transport calculations.
     """
-    def __init__(self, xyz_file: str, output_dir: str = None):
+    def __init__(self, xyz_file: str, output_dir: str = None, use_ecp: bool = False):
         self.xyz_file = xyz_file
         
         # Set up output directory
@@ -29,6 +29,8 @@ class TransportCalculation:
             
         # Set up logging
         self.setup_logging()
+        
+        self.use_ecp = use_ecp
         
     def setup_logging(self):
         """Configure logging to both file and console"""
@@ -58,7 +60,7 @@ class TransportCalculation:
         self.logger.info("Starting DFT calculation...")
         
         try:
-            dft_calc = DFTHamiltonian(self.xyz_file)
+            dft_calc = DFTHamiltonian(self.xyz_file, self.use_ecp)
             hamiltonian, overlap = dft_calc.calculate()
             
             # Save matrices to output directory
@@ -139,6 +141,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run quantum transport calculations")
     parser.add_argument("xyz_file", help="Input XYZ file")
     parser.add_argument("--output", "-o", help="Output directory (optional)")
+    parser.add_argument("--use-ecp", action="store_true", help="Use ECP for Au atoms")
     args = parser.parse_args()
     
     # Verify input file exists
@@ -147,8 +150,8 @@ def main():
         sys.exit(1)
     
     try:
-        # Run calculation
-        calc = TransportCalculation(args.xyz_file, args.output)
+        # Run calculation with specified ECP option
+        calc = TransportCalculation(args.xyz_file, args.output, args.use_ecp)
         calc.run_full_calculation()
         
     except Exception as e:
