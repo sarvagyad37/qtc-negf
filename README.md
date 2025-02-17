@@ -24,8 +24,8 @@ A Python-based quantum transport calculator that combines DFT (Density Functiona
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/sarvagyad37/quantum-transport-calculator.git
-cd quantum-transport-calculator
+git clone https://github.com/sarvagyad37/qtc-ngef.git
+cd qtc-ngef
 ```
 
 2. Create and activate virtual environment:
