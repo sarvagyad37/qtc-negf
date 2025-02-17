@@ -1,0 +1,7 @@
+/bak/
+/__pycache__/
+/output_*/
+/qtc-venv/
+/docs/
+.DS_Store
+.vscode/

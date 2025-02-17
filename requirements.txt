@@ -1,0 +1,9 @@
+numpy>=1.21.0
+pyscf>=2.1.0
+scipy>=1.7.0  # Required by pyscf
+h5py>=3.6.0   # Required by pyscf for data storage
+--extra-index-url https://download.pytorch.org/whl/nightly/cpu
+torch  # For Metal acceleration on Apple Silicon
+matplotlib>=3.5.0  # For plotting results
+dataclasses>=0.6  # For data structures
+pathlib>=1.0.1  # For path handling 
