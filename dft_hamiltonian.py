@@ -37,41 +37,42 @@ class DFTHamiltonian:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
         
-        # Configure threading for Apple Silicon
+        # Configure threading based on platform
         if platform.processor() == 'arm':
-            # Optimize for M1/M2
+            # Optimize for Apple Silicon (M1/M2)
+            self.logger.info("Configuring for Apple Silicon...")
+            
+            # Set memory limit
             os.environ['PYSCF_MAX_MEMORY'] = '32000'  # MB
-            os.environ['VECLIB_MAXIMUM_THREADS'] = '8' # Optimize Accelerate framework
             
-            # Remove OpenMP settings as it's not available
-            if 'OMP_NUM_THREADS' in os.environ:
-                del os.environ['OMP_NUM_THREADS']
-            if 'MKL_NUM_THREADS' in os.environ:
-                del os.environ['MKL_NUM_THREADS']
+            # Configure Apple Accelerate framework
+            os.environ['VECLIB_MAXIMUM_THREADS'] = '8'
             
-            # Use Apple's native threading
+            # PySCF native threading (avoid OpenMP)
             from pyscf.lib import num_threads
             num_threads(8)  # Set number of threads for native threading
             
-            self.logger.info("Configured for Apple Silicon native threading")
-            
-            # Try to enable Metal acceleration if available
+            # Try to enable Metal acceleration
             try:
                 import torch
-                self.logger.info(f"PyTorch version: {torch.__version__}")
-                self.logger.info(f"MPS available: {torch.backends.mps.is_available()}")
-                self.logger.info(f"MPS built: {torch.backends.mps.is_built()}")
-                
-                if torch.backends.mps.is_available():
+                if torch.backends.mps.is_available() and torch.backends.mps.is_built():
                     os.environ['PYSCF_USE_METAL'] = '1'
                     self.logger.info("Metal acceleration enabled")
+                    self.logger.info(f"PyTorch MPS device available: {torch.backends.mps.is_available()}")
                 else:
-                    self.logger.warning("MPS is not available. Metal acceleration disabled")
-                    if not torch.backends.mps.is_built():
-                        self.logger.warning("PyTorch was not built with MPS support")
-            except ImportError as e:
-                self.logger.warning(f"PyTorch import failed: {str(e)}")
-                self.logger.info("PyTorch not available, Metal acceleration disabled")
+                    self.logger.info("Metal acceleration not available")
+            except ImportError:
+                self.logger.info("PyTorch not available, using CPU only")
+        else:
+            # For non-Apple Silicon platforms
+            self.logger.info("Configuring for standard CPU...")
+            
+            # Use standard threading configuration
+            os.environ['OMP_NUM_THREADS'] = '8'
+            os.environ['MKL_NUM_THREADS'] = '8'
+            
+            from pyscf.lib import num_threads
+            num_threads(8)
 
     def read_xyz(self) -> list:
         """
@@ -101,42 +102,48 @@ class DFTHamiltonian:
     def setup_molecule(self) -> None:
         """
         Set up molecular system using PySCF's gto module.
-        Uses DZP (Double Zeta plus Polarization) basis set for all atoms.
-        Optionally uses ECP for Au atoms.
+        Uses DZP for non-Au atoms, and LANL2DZ with ECP for Au when ECP is enabled.
         """
         try:
             atoms = self.read_xyz()
             
             # Calculate total electrons
             total_electrons = 0
+            basis_dict = {}
             
-            # Count electrons based on ECP usage
+            # Set up basis sets and count electrons
             for atom in atoms:
                 symbol = atom[0]
                 atomic_number = gto.elements.charge(symbol)
                 
                 if symbol == 'Au' and self.use_ecp:
-                    total_electrons += 11  # 11 valence electrons with ECP
+                    # For Au with ECP: use LANL2DZ basis and ECP
+                    basis_dict[symbol] = 'lanl2dz'
+                    total_electrons += 11  # 11 valence electrons with LANL2DZ ECP
                 else:
-                    total_electrons += atomic_number  # All electrons
+                    # For all other atoms or Au without ECP: use DZP
+                    basis_dict[symbol] = 'dzp'
+                    total_electrons += atomic_number
             
             total_electrons -= self.charge
             default_spin = total_electrons % 2
             
-            # Log electron count and basis information
+            # Log configuration details
             if self.use_ecp:
-                self.logger.info(f"System has {total_electrons} electrons (with ECP for Au)")
-                self.logger.info("Using DZP basis with LANL2DZ ECP for Au")
+                self.logger.info(f"System has {total_electrons} electrons (with LANL2DZ ECP for Au)")
+                self.logger.info("Basis sets:")
+                for atom, basis in basis_dict.items():
+                    self.logger.info(f"  {atom}: {basis}")
             else:
                 self.logger.info(f"System has {total_electrons} electrons (all-electron calculation)")
-                self.logger.info("Using DZP basis for all atoms (including all electrons for Au)")
+                self.logger.info("Using DZP basis for all atoms")
             
             self.logger.info(f"Using spin = {default_spin} (multiplicity = {default_spin + 1})")
             
-            # Set up molecule with or without ECP
+            # Set up molecule
             mol_args = {
                 'atom': atoms,
-                'basis': 'dzp',
+                'basis': basis_dict if self.use_ecp else 'dzp',
                 'charge': self.charge,
                 'spin': default_spin,
                 'verbose': 3,
@@ -144,9 +151,10 @@ class DFTHamiltonian:
                 'symmetry': True
             }
             
-            # Add ECP if requested
+            # Add ECP for Au when requested
             if self.use_ecp:
                 mol_args['ecp'] = {'Au': 'lanl2dz'}
+                self.logger.info("Using LANL2DZ ECP for Au atoms")
             
             self.mol = gto.M(**mol_args)
             self.mol.build()
@@ -266,7 +274,7 @@ def main():
     """
     Example usage of DFTHamiltonian class.
     """
-    xyz_file = "scatteringco.xyz"
+    xyz_file = "molecule.xyz"
     
     try:
         # Example with all-electron calculation
